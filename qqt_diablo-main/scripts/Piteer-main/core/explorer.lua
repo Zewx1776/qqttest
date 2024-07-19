@@ -6,10 +6,12 @@ local explorer = {
 }
 local explored_areas = {}
 local target_position = nil
-local grid_size = 1               -- Größe der Rasterzellen in Metern
+local grid_size = 1.5               -- Größe der Rasterzellen in Metern
 local exploration_radius = 8      -- Radius, in dem Bereiche als erkundet gelten
-local explored_buffer = 1         -- Puffer um erkundete Bereiche in Metern
-local max_target_distance = 15    -- Maximale Entfernung für ein neues Ziel
+local explored_buffer = 2         -- Puffer um erkundete Bereiche in Metern
+local max_target_distance = 100    -- Maximale Entfernung für ein neues Ziel
+local target_distance_states = {70, 60, 50, 15}
+local target_distance_index = 1 
 local unstuck_target_distance = 5 -- Maximale Entfernung für ein Unstuck-Ziel
 local stuck_threshold = 4         -- Sekunden, bevor der Charakter als "steckengeblieben" gilt
 local last_position = nil
@@ -30,6 +32,10 @@ local exploration_direction = { x = 1, y = 0 } -- Initiale Richtung (kann angepa
 -- Neue Variable für die letzte Bewegungsrichtung
 local last_movement_direction = nil
 
+--ai fix for stairs
+local function set_height_of_valid_position(point)
+    return utility.set_height_of_valid_position(point)
+end
 
 local function get_grid_key(point)
     return math.floor(point:x() / grid_size) .. "," ..
@@ -79,12 +85,13 @@ local function check_walkable_area()
                 player_pos:y() + y,
                 player_pos:z()
             )
+            point = set_height_of_valid_position(point)
 
             if utility.is_point_walkeable(point) then
                 if is_point_in_explored_area(point) then
-                    graphics.text_3d("explored", point, 15, color_white(128))
+                  --  graphics.text_3d("explored", point, 15, color_white(128))
                 else
-                    graphics.text_3d("unexplored", point, 15, color_green(255))
+                  --  graphics.text_3d("unexplored", point, 15, color_green(255))
                 end
             end
         end
@@ -122,6 +129,7 @@ local function is_near_wall(point)
             point:y() + dir.y * wall_check_distance,
             point:z()
         )
+        check_point = set_height_of_valid_position(check_point)
         if not utility.is_point_walkeable(check_point) then
             return true
         end
@@ -142,6 +150,8 @@ local function find_central_unexplored_target()
                 player_pos:y() + y,
                 player_pos:z()
             )
+            
+            point = set_height_of_valid_position(point)
 
             if utility.is_point_walkeable(point) and not is_point_in_explored_area(point) then
                 table.insert(unexplored_points, point)
@@ -160,6 +170,7 @@ local function find_central_unexplored_target()
     local center_x = (min_x + max_x) / 2
     local center_y = (min_y + max_y) / 2
     local center = vec3:new(center_x, center_y, player_pos:z())
+    center = set_height_of_valid_position(center)
 
     table.sort(unexplored_points, function(a, b)
         return calculate_distance(a, center) < calculate_distance(b, center)
@@ -180,7 +191,7 @@ local function find_random_explored_target()
                 player_pos:y() + y,
                 player_pos:z()
             )
-
+            point = set_height_of_valid_position(point)
             local grid_key = get_grid_key(point)
             if utility.is_point_walkeable(point) and explored_areas[grid_key] and not is_near_wall(point) then
                 table.insert(explored_points, point)
@@ -229,6 +240,7 @@ local function find_explored_direction_target()
             0
         )
         local target_point = player_pos + direction_vector
+        target_point = set_height_of_valid_position(target_point)
 
         if utility.is_point_walkeable(target_point) and is_point_in_explored_area(target_point) then
             local distance = calculate_distance(player_pos, target_point)
@@ -266,6 +278,7 @@ local function find_unstuck_target()
                 player_pos:y() + y,
                 player_pos:z()
             )
+            point = set_height_of_valid_position(point)
 
             local distance = calculate_distance(player_pos, point)
             if utility.is_point_walkeable(point) and distance >= 2 and distance <= unstuck_target_distance then
@@ -321,17 +334,27 @@ end
 
 local function get_neighbors(point)
     local neighbors = {}
-    local directions = {
-        { x = 1, y = 0 }, { x = -1, y = 0 }, { x = 0, y = 1 }, { x = 0, y = -1 },
-        { x = 1, y = 1 }, { x = 1, y = -1 }, { x = -1, y = 1 }, { x = -1, y = -1 }
-    }
-
+ --FIX 1
+    --  local directions = {
+  --      { x = 1, y = 0, z = 0 }, { x = -1, y = 0, z = 0 },
+  --      { x = 0, y = 1, z = 0 }, { x = 0, y = -1, z = 0 },
+--        { x = 1, y = 1, z = 0 }, { x = 1, y = -1, z = 0 },
+  --      { x = -1, y = 1, z = 0 }, { x = -1, y = -1, z = 0 },
+ --       { x = 0, y = 0, z = 1 }, { x = 0, y = 0, z = -1 }  -- Vertical neighbors
+ --   }
+ --FIX 2
+ local directions = {
+    { x = 1, y = 0 }, { x = -1, y = 0 }, { x = 0, y = 1 }, { x = 0, y = -1 },
+    { x = 1, y = 1 }, { x = 1, y = -1 }, { x = -1, y = 1 }, { x = -1, y = -1 }
+}
     for _, dir in ipairs(directions) do
         local neighbor = vec3:new(
             point:x() + dir.x * grid_size,
             point:y() + dir.y * grid_size,
-            point:z()
+            point:z() -- FIX 1
+            -- + dir.z * grid_size
         )
+        neighbor = set_height_of_valid_position(neighbor)
         if utility.is_point_walkeable(neighbor) then
             -- Prüfen, ob die Richtung nicht der letzten Bewegungsrichtung entgegengesetzt ist
             if not last_movement_direction or
@@ -348,6 +371,7 @@ local function get_neighbors(point)
             point:y() - last_movement_direction.y * grid_size,
             point:z()
         )
+        back_direction = set_height_of_valid_position(back_direction)
         if utility.is_point_walkeable(back_direction) then
             table.insert(neighbors, back_direction)
         end
@@ -375,7 +399,7 @@ local function a_star(start, goal)
     while #open_set > 0 do
         literations = literations + 1
 
-        if literations > 1000 then
+        if literations > 5000 then
             console.print("Max Literations reached, aborting!")
             break
         end
@@ -386,6 +410,9 @@ local function a_star(start, goal)
         local current = table.remove(open_set, 1)
 
         if calculate_distance(current, goal) < grid_size then
+             -- Reset target distance and index on successful pathfinding
+             max_target_distance = target_distance_states[1]
+             target_distance_index = 1 
             return reconstruct_path(came_from, current)
         end
 
@@ -412,15 +439,24 @@ local function a_star(start, goal)
         end
     end
 
+ -- If no path is found, adjust the target distance
+ if target_distance_index < #target_distance_states then
+    target_distance_index = target_distance_index + 1
+    max_target_distance = target_distance_states[target_distance_index]
+    console.print("No path found. Reducing max target distance to " .. max_target_distance)
+else
+    console.print("No path found even after reducing max target distance.")
+end 
     return nil -- No path found
 end
 
 local function move_to_target()
     if target_position then
+       -- console.print("Target coordinates: x=" .. target_position:x() .. ", y=" .. target_position:y() .. ", z=" .. target_position:z())
         local player_pos = get_player_position()
-
+        --console.print("Player position: x=" .. player_pos.x .. ", y=" .. player_pos.y .. ", z=" .. player_pos.z)
         -- Check if the player is more than 20 meters away from the target position
-        if calculate_distance(player_pos, target_position) > 20 then
+        if calculate_distance(player_pos, target_position) > 200 then
             target_position = find_target(false)
             current_path = {}
             path_index = 1
@@ -494,15 +530,15 @@ end
 on_render(function()
     if utils.player_on_quest(enums.quests.pit_ongoing) and settings.enabled then
         check_walkable_area()
-
         local is_stuck = check_if_stuck()
-
         if is_stuck then
-            console.print("Character was stuck. Finding new target.")
+            console.print("Character was stuck. Finding new target and attempting revive")
             target_position = find_target(true)
+            target_position = set_height_of_valid_position(target_position)
             last_move_time = os.time()
             current_path = {}
             path_index = 1
+            revive_at_checkpoint() 
         end
 
         move_to_target()

@@ -3,6 +3,7 @@ local enums      = require "data.enums"
 local settings   = require "core.settings"
 local navigation = require "core.navigation"
 local explorer   = require "core.explorer"
+-- local prediction = require "#api.prediction"  -- Add the prediction module
 
 local task       = {
     name = "Kill Monsters",
@@ -22,7 +23,15 @@ local task       = {
         local within_distance = utils.distance_to(enemy) < distance_check
 
         if not within_distance then
-            explorer:set_custom_target(enemy:get_position())
+            local player_pos = get_player_position()
+            local enemy_pos = enemy:get_position()
+            
+            -- Check for wall collision
+            if not prediction.is_wall_collision(player_pos, enemy_pos, 1.0) then
+                explorer:set_custom_target(enemy_pos)
+            else
+                print("Wall collision detected, cannot move to enemy")
+            end
         else
             interact_object(enemy)
         end
