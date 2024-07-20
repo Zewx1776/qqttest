@@ -23,7 +23,20 @@ local task       = {
             if utils.distance_to(obelisk) < 2 and get_time_since_inject() - last_open > 2 then
                 local pit_level = settings.pit_level
                 --utility.open_pit_portal(pit_level) -- NYI!
-                utility.open_pit_portal(0x1C3595)
+               -- 51 = 0x1C3554
+                --75 = 0x1C3586
+                --100 = 0x1C35C1
+                --61 = 0x1C3568
+                --121 = 0x1D6D21
+                --81 = 0x1C3595 
+                --98 = 0x1C35BC
+                --31 = 0x1C352B
+                --119 = 0x1D6D1D
+                --129 = 0x1D6D36
+                --141 = 0x1D6D4E
+                --101 = 0x1D6CEF
+                -- 1 = 0x1C34EB
+                utility.open_pit_portal(0x1C34EB)
                 last_open = get_time_since_inject()
             end
         else

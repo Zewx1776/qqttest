@@ -59,14 +59,18 @@ local function update_explored_area_bounds(point, radius)
     explored_area_bounds.max_x = math.max(explored_area_bounds.max_x, point:x() + radius)
     explored_area_bounds.min_y = math.min(explored_area_bounds.min_y, point:y() - radius)
     explored_area_bounds.max_y = math.max(explored_area_bounds.max_y, point:y() + radius)
+    explored_area_bounds.min_z = math.min(explored_area_bounds.min_z or math.huge, point:z() - radius)
+    explored_area_bounds.max_z = math.max(explored_area_bounds.max_z or -math.huge, point:z() + radius)
 end
 
 local function is_point_in_explored_area(point)
     return point:x() >= explored_area_bounds.min_x and point:x() <= explored_area_bounds.max_x and
-        point:y() >= explored_area_bounds.min_y and point:y() <= explored_area_bounds.max_y
+        point:y() >= explored_area_bounds.min_y and point:y() <= explored_area_bounds.max_y and
+        point:z() >= explored_area_bounds.min_z and point:z() <= explored_area_bounds.max_z
 end
 
-local function mark_area_as_explored(center, radius)
+	
+    local function mark_area_as_explored(center, radius)
     update_explored_area_bounds(center, radius)
     -- Hier können Sie zusätzliche Logik hinzufügen, um die erkundeten Bereiche zu markieren
     -- z.B. durch Hinzufügen zu einer Datenstruktur oder durch Setzen von Flags
@@ -74,24 +78,27 @@ end
 
 local function check_walkable_area()
     local player_pos = get_player_position()
-    local check_radius = 50 -- Überprüfungsradius in Metern
+    local check_radius = 10 -- Überprüfungsradius in Metern
 
     mark_area_as_explored(player_pos, exploration_radius)
 
     for x = -check_radius, check_radius, grid_size do
         for y = -check_radius, check_radius, grid_size do
-            local point = vec3:new(
-                player_pos:x() + x,
-                player_pos:y() + y,
-                player_pos:z()
-            )
-            point = set_height_of_valid_position(point)
+            for z = -check_radius, check_radius, grid_size do -- Inclui z no loop
+                local point = vec3:new(
+                    player_pos:x() + x,
+                    player_pos:y() + y,
+                    player_pos:z() + z
+                )
+                print("Checking point:", point:x(), point:y(), point:z()) -- Debug print
+                point = set_height_of_valid_position(point)
 
-            if utility.is_point_walkeable(point) then
-                if is_point_in_explored_area(point) then
-                  --  graphics.text_3d("explored", point, 15, color_white(128))
-                else
-                  --  graphics.text_3d("unexplored", point, 15, color_green(255))
+                if utility.is_point_walkeable(point) then
+                    if is_point_in_explored_area(point) then
+                        -- graphics.text_3d("explored", point, 15, color_white(128))
+                    else
+                        -- graphics.text_3d("unexplored", point, 15, color_green(255))
+                    end
                 end
             end
         end
