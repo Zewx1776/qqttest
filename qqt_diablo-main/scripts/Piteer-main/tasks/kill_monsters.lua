@@ -3,9 +3,8 @@ local enums      = require "data.enums"
 local settings   = require "core.settings"
 local navigation = require "core.navigation"
 local explorer   = require "core.explorer"
--- local prediction = require "#api.prediction"  -- Add the prediction module
 
-local task       = {
+local task = {
     name = "Kill Monsters",
     shouldExecute = function()
         if not utils.player_on_quest(enums.quests.pit_ongoing) then
@@ -19,21 +18,19 @@ local task       = {
         local distance_check = settings.melee_logic and 2 or 10
         local enemy = utils.get_closest_enemy()
         if not enemy then return false end
-
         local within_distance = utils.distance_to(enemy) < distance_check
 
         if not within_distance then
-            local player_pos = get_player_position()
-            local enemy_pos = enemy:get_position()
-            
-            -- Check for wall collision
-            if not prediction.is_wall_collision(player_pos, enemy_pos, 1.0) then
-                explorer:set_custom_target(enemy_pos)
-            else
-                print("Wall collision detected, cannot move to enemy")
-            end
+            explorer:set_custom_target(enemy:get_position())
         else
-            interact_object(enemy)
+            local player_pos = get_player_position()
+            
+            -- Check for wall collision only for object interaction
+            if not target_selector.is_wall_collision(player_pos, enemy, 1.0) then
+                interact_object(enemy)
+            else
+                print("Wall collision detected, cannot interact with enemy")
+            end
         end
     end
 }

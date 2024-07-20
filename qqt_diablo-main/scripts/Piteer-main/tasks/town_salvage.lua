@@ -7,7 +7,7 @@ local task  = {
         return utils.player_in_zone("Scos_Cerrigar") and get_local_player():get_item_count() >= 20
     end,
     Execute = function()
-        -- Implement functions to interact with Pit Obelisk
+        auto_play.repair_routine = function() end
     end
 }
 
