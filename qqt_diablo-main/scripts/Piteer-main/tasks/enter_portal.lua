@@ -1,5 +1,6 @@
 local utils = require "core.utils"
 local enums = require "data.enums"
+local explorer = require "core.explorer"
 
 local task  = {
     name = "Enter Portal",
@@ -9,7 +10,14 @@ local task  = {
     Execute = function()
         local portal = utils.get_pit_portal()
         if portal then
-            interact_object(portal)
+            explorer:clear_path_and_target()
+            explorer:set_custom_target(portal:get_position())
+            explorer:move_to_target()
+
+            -- Check if the player is close enough to interact with the portal
+            if utils.distance_to(portal) < 2 then
+                interact_object(portal)
+            end
         end
     end
 }
