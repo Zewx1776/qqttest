@@ -32,6 +32,13 @@ local exploration_direction = { x = 1, y = 0 } -- Initiale Richtung (kann angepa
 -- Neue Variable für die letzte Bewegungsrichtung
 local last_movement_direction = nil
 
+--ai fix for kill monsters path
+function explorer:clear_path_and_target()
+    target_position = nil
+    current_path = {}
+    path_index = 1
+end
+
 --ai fix for stairs
 local function set_height_of_valid_position(point)
     return utility.set_height_of_valid_position(point)
@@ -341,29 +348,18 @@ end
 
 local function get_neighbors(point)
     local neighbors = {}
- --FIX 1
-    --  local directions = {
-  --      { x = 1, y = 0, z = 0 }, { x = -1, y = 0, z = 0 },
-  --      { x = 0, y = 1, z = 0 }, { x = 0, y = -1, z = 0 },
---        { x = 1, y = 1, z = 0 }, { x = 1, y = -1, z = 0 },
-  --      { x = -1, y = 1, z = 0 }, { x = -1, y = -1, z = 0 },
- --       { x = 0, y = 0, z = 1 }, { x = 0, y = 0, z = -1 }  -- Vertical neighbors
- --   }
- --FIX 2
- local directions = {
-    { x = 1, y = 0 }, { x = -1, y = 0 }, { x = 0, y = 1 }, { x = 0, y = -1 },
-    { x = 1, y = 1 }, { x = 1, y = -1 }, { x = -1, y = 1 }, { x = -1, y = -1 }
-}
+    local directions = {
+        { x = 1, y = 0 }, { x = -1, y = 0 }, { x = 0, y = 1 }, { x = 0, y = -1 },
+        { x = 1, y = 1 }, { x = 1, y = -1 }, { x = -1, y = 1 }, { x = -1, y = -1 }
+    }
     for _, dir in ipairs(directions) do
         local neighbor = vec3:new(
             point:x() + dir.x * grid_size,
             point:y() + dir.y * grid_size,
-            point:z() -- FIX 1
-            -- + dir.z * grid_size
+            point:z()
         )
         neighbor = set_height_of_valid_position(neighbor)
         if utility.is_point_walkeable(neighbor) then
-            -- Prüfen, ob die Richtung nicht der letzten Bewegungsrichtung entgegengesetzt ist
             if not last_movement_direction or
                 (dir.x ~= -last_movement_direction.x or dir.y ~= -last_movement_direction.y) then
                 table.insert(neighbors, neighbor)
@@ -371,7 +367,6 @@ local function get_neighbors(point)
         end
     end
 
-    -- Wenn keine anderen Optionen verfügbar sind, fügen Sie die entgegengesetzte Richtung hinzu
     if #neighbors == 0 and last_movement_direction then
         local back_direction = vec3:new(
             point:x() - last_movement_direction.x * grid_size,
@@ -417,9 +412,8 @@ local function a_star(start, goal)
         local current = table.remove(open_set, 1)
 
         if calculate_distance(current, goal) < grid_size then
-             -- Reset target distance and index on successful pathfinding
-             max_target_distance = target_distance_states[1]
-             target_distance_index = 1 
+            max_target_distance = target_distance_states[1]
+            target_distance_index = 1 
             return reconstruct_path(came_from, current)
         end
 
@@ -446,23 +440,19 @@ local function a_star(start, goal)
         end
     end
 
- -- If no path is found, adjust the target distance
- if target_distance_index < #target_distance_states then
-    target_distance_index = target_distance_index + 1
-    max_target_distance = target_distance_states[target_distance_index]
-    console.print("No path found. Reducing max target distance to " .. max_target_distance)
-else
-    console.print("No path found even after reducing max target distance.")
-end 
-    return nil -- No path found
+    if target_distance_index < #target_distance_states then
+        target_distance_index = target_distance_index + 1
+        max_target_distance = target_distance_states[target_distance_index]
+        console.print("No path found. Reducing max target distance to " .. max_target_distance)
+    else
+        console.print("No path found even after reducing max target distance.")
+    end 
+    return nil
 end
 
 local function move_to_target()
     if target_position then
-       -- console.print("Target coordinates: x=" .. target_position:x() .. ", y=" .. target_position:y() .. ", z=" .. target_position:z())
         local player_pos = get_player_position()
-        --console.print("Player position: x=" .. player_pos.x .. ", y=" .. player_pos.y .. ", z=" .. player_pos.z)
-        -- Check if the player is more than 20 meters away from the target position
         if calculate_distance(player_pos, target_position) > 200 then
             target_position = find_target(false)
             current_path = {}
@@ -498,13 +488,12 @@ local function move_to_target()
             current_path = {}
             path_index = 1
 
-            -- Überprüfe, ob es neue unerforschte Bereiche gibt
             if exploration_mode == "explored" then
                 local unexplored_target = find_central_unexplored_target()
                 if unexplored_target then
                     exploration_mode = "unexplored"
                     console.print("Found new unexplored area. Switching back to unexplored mode.")
-                    last_explored_targets = {} -- Reset last targets when switching modes
+                    last_explored_targets = {}
                 end
             end
         end
@@ -534,6 +523,11 @@ function explorer:set_custom_target(target)
     target_position = target
 end
 
+-- Expose the move_to_target function
+function explorer:move_to_target()
+    move_to_target()
+end
+
 on_render(function()
     if utils.player_on_quest(enums.quests.pit_ongoing) and settings.enabled then
         check_walkable_area()
@@ -548,7 +542,7 @@ on_render(function()
             revive_at_checkpoint() 
         end
 
-        move_to_target()
+        explorer:move_to_target()
 
         if target_position then
             graphics.text_3d("TARGET", target_position, 20, color_red(255))
