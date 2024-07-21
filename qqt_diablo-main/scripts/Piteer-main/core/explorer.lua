@@ -1,3 +1,66 @@
+-- MinHeap implementation for A* algorithm
+local MinHeap = {}
+MinHeap.__index = MinHeap
+
+function MinHeap.new(compare)
+    return setmetatable({heap = {}, compare = compare or function(a, b) return a < b end}, MinHeap)
+end
+
+function MinHeap:push(value)
+    table.insert(self.heap, value)
+    self:siftUp(#self.heap)
+end
+
+function MinHeap:pop()
+    local root = self.heap[1]
+    self.heap[1] = self.heap[#self.heap]
+    table.remove(self.heap)
+    self:siftDown(1)
+    return root
+end
+
+function MinHeap:peek()
+    return self.heap[1]
+end
+
+function MinHeap:empty()
+    return #self.heap == 0
+end
+
+function MinHeap:siftUp(index)
+    local parent = math.floor(index / 2)
+    while index > 1 and self.compare(self.heap[index], self.heap[parent]) do
+        self.heap[index], self.heap[parent] = self.heap[parent], self.heap[index]
+        index = parent
+        parent = math.floor(index / 2)
+    end
+end
+
+function MinHeap:siftDown(index)
+    local size = #self.heap
+    while true do
+        local smallest = index
+        local left = 2 * index
+        local right = 2 * index + 1
+        if left <= size and self.compare(self.heap[left], self.heap[smallest]) then
+            smallest = left
+        end
+        if right <= size and self.compare(self.heap[right], self.heap[smallest]) then
+            smallest = right
+        end
+        if smallest == index then break end
+        self.heap[index], self.heap[smallest] = self.heap[smallest], self.heap[index]
+        index = smallest
+    end
+end
+
+function MinHeap:contains(value)
+    for _, v in ipairs(self.heap) do
+        if v == value then return true end
+    end
+    return false
+end
+
 local utils = require "core.utils"
 local enums = require "data.enums"
 local settings = require "core.settings"
@@ -84,6 +147,8 @@ end
 end
 
 local function check_walkable_area()
+    if os.time() % 5 ~= 0 then return end  -- Only run every 5 seconds
+
     local player_pos = get_player_position()
     local check_radius = 10 -- Überprüfungsradius in Metern
 
@@ -102,9 +167,9 @@ local function check_walkable_area()
 
                 if utility.is_point_walkeable(point) then
                     if is_point_in_explored_area(point) then
-                        -- graphics.text_3d("explored", point, 15, color_white(128))
+                   --     graphics.text_3d("explored", point, 15, color_white(128))
                     else
-                        -- graphics.text_3d("unexplored", point, 15, color_green(255))
+                    --    graphics.text_3d("unexplored", point, 15, color_green(255))
                     end
                 end
             end
@@ -392,49 +457,46 @@ local function reconstruct_path(came_from, current)
 end
 
 local function a_star(start, goal)
-    local open_set = { start }
+    
+    local closed_set = {}
     local came_from = {}
     local g_score = { [get_grid_key(start)] = 0 }
     local f_score = { [get_grid_key(start)] = heuristic(start, goal) }
-    local literations = 0
+    local iterations = 0
 
-    while #open_set > 0 do
-        literations = literations + 1
+    local open_set = MinHeap.new(function(a, b)
+        return f_score[get_grid_key(a)] < f_score[get_grid_key(b)] -- Does that work?
+    end)
+    open_set:push(start)
 
-        if literations > 5000 then
-            console.print("Max Literations reached, aborting!")
+    while not open_set:empty() do
+        iterations = iterations + 1
+        if iterations > 5000 then
+            console.print("Max iterations reached, aborting!")
             break
         end
 
-        table.sort(open_set, function(a, b)
-            return f_score[get_grid_key(a)] < f_score[get_grid_key(b)]
-        end)
-        local current = table.remove(open_set, 1)
-
+        local current = open_set:pop()
         if calculate_distance(current, goal) < grid_size then
             max_target_distance = target_distance_states[1]
             target_distance_index = 1 
             return reconstruct_path(came_from, current)
         end
 
+        closed_set[get_grid_key(current)] = true
+
         for _, neighbor in ipairs(get_neighbors(current)) do
-            local tentative_g_score = g_score[get_grid_key(current)] + calculate_distance(current, neighbor)
+            if not closed_set[get_grid_key(neighbor)] then
+                local tentative_g_score = g_score[get_grid_key(current)] + calculate_distance(current, neighbor)
 
-            if not g_score[get_grid_key(neighbor)] or tentative_g_score < g_score[get_grid_key(neighbor)] then
-                came_from[get_grid_key(neighbor)] = current
-                g_score[get_grid_key(neighbor)] = tentative_g_score
-                f_score[get_grid_key(neighbor)] = g_score[get_grid_key(neighbor)] + heuristic(neighbor, goal)
+                if not g_score[get_grid_key(neighbor)] or tentative_g_score < g_score[get_grid_key(neighbor)] then
+                    came_from[get_grid_key(neighbor)] = current
+                    g_score[get_grid_key(neighbor)] = tentative_g_score
+                    f_score[get_grid_key(neighbor)] = g_score[get_grid_key(neighbor)] + heuristic(neighbor, goal)
 
-                local is_in_open_set = false
-                for _, node in ipairs(open_set) do
-                    if get_grid_key(node) == get_grid_key(neighbor) then
-                        is_in_open_set = true
-                        break
+                    if not open_set:contains(neighbor) then
+                        open_set:push(neighbor)
                     end
-                end
-
-                if not is_in_open_set then
-                    table.insert(open_set, neighbor)
                 end
             end
         end
