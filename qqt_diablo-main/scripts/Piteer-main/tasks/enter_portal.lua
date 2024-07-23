@@ -20,7 +20,8 @@ local task  = {
                     interact_object(portal)
                 end
             else
-                interact_object(portal)
+                -- interact_object(portal) -- qqt note: fix stuck
+				loot_manager.interact_with_object(portal)
             end
         end
     end

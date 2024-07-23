@@ -58,7 +58,7 @@ end
 function utils.get_closest_enemy()
     local elite_only = settings.elites_only
     local player_pos = get_player_position()
-    local enemies = target_selector.get_near_target_list(player_pos, 15)
+    local enemies = target_selector.get_near_target_list(player_pos, 90)
     local closest_elite, closest_normal
     local min_elite_dist, min_normal_dist = math.huge, math.huge
 
@@ -87,7 +87,7 @@ function utils.get_pit_portal()
     for _, actor in pairs(actors) do
         local name = actor:get_skin_name()
         local distance = utils.distance_to(actor)
-        if distance < 20 then
+        if distance < 100 then
             if name == enums.portal_names.demise or name == enums.portal_names.guardians_lair or name == enums.portal_names.pit_portal then
                 return actor
             end

@@ -69,12 +69,12 @@ local explorer = {
 }
 local explored_areas = {}
 local target_position = nil
-local grid_size = 1.5               -- Größe der Rasterzellen in Metern
+local grid_size = 1.5            -- Größe der Rasterzellen in Metern
 local exploration_radius = 8      -- Radius, in dem Bereiche als erkundet gelten
 local explored_buffer = 2         -- Puffer um erkundete Bereiche in Metern
-local max_target_distance = 100    -- Maximale Entfernung für ein neues Ziel
-local target_distance_states = {70, 60, 50, 15}
-local target_distance_index = 1 
+local max_target_distance = 120    -- Maximale Entfernung für ein neues Ziel
+local target_distance_states = {120, 90, 80, 15}
+local target_distance_index = 1
 local unstuck_target_distance = 5 -- Maximale Entfernung für ein Unstuck-Ziel
 local stuck_threshold = 4         -- Sekunden, bevor der Charakter als "steckengeblieben" gilt
 local last_position = nil
@@ -114,6 +114,9 @@ local function get_grid_key(point)
 end
 
 local function calculate_distance(point1, point2)
+    if not point2.x and point2 then
+        return point1:dist_to_ignore_z(point2:get_position())
+    end
     return point1:dist_to_ignore_z(point2)
 end
 
@@ -139,7 +142,7 @@ local function is_point_in_explored_area(point)
         point:z() >= explored_area_bounds.min_z and point:z() <= explored_area_bounds.max_z
 end
 
-	
+
     local function mark_area_as_explored(center, radius)
     update_explored_area_bounds(center, radius)
     -- Hier können Sie zusätzliche Logik hinzufügen, um die erkundeten Bereiche zu markieren
@@ -196,7 +199,7 @@ local function reset_exploration()
 end
 
 local function is_near_wall(point)
-    local wall_check_distance = 1.5 -- Abstand zur Überprüfung von Wänden
+    local wall_check_distance = 1 -- Abstand zur Überprüfung von Wänden
     local directions = {
         { x = 1, y = 0 }, { x = -1, y = 0 }, { x = 0, y = 1 }, { x = 0, y = -1 },
         { x = 1, y = 1 }, { x = 1, y = -1 }, { x = -1, y = 1 }, { x = -1, y = -1 }
@@ -229,10 +232,10 @@ local function find_central_unexplored_target()
                 player_pos:y() + y,
                 player_pos:z()
             )
-            
+
             point = set_height_of_valid_position(point)
 
-            if utility.is_point_walkeable(point) and not is_point_in_explored_area(point) then
+            if utility.is_point_walkeable(point) and not is_point_in_explored_area(point) and not is_near_wall(point) then
                 table.insert(unexplored_points, point)
                 min_x = math.min(min_x, point:x())
                 max_x = math.max(max_x, point:x())
@@ -414,8 +417,8 @@ end
 local function get_neighbors(point)
     local neighbors = {}
     local directions = {
-        { x = 1, y = 0 }, { x = -1, y = 0 }, { x = 0, y = 1 }, { x = 0, y = -1 },
-        { x = 1, y = 1 }, { x = 1, y = -1 }, { x = -1, y = 1 }, { x = -1, y = -1 }
+        { x = 1.2, y = 0 }, { x = -1.2, y = 0 }, { x = 0, y = 1.2 }, { x = 0, y = -1.2 },
+        { x = 1.2, y = 1.2 }, { x = 1.2, y = -1.2 }, { x = -1.2, y = 1.2 }, { x = -1.2, y = -1.2 }
     }
     for _, dir in ipairs(directions) do
         local neighbor = vec3:new(
@@ -453,11 +456,28 @@ local function reconstruct_path(came_from, current)
         current = came_from[get_grid_key(current)]
         table.insert(path, 1, current)
     end
-    return path
+
+    -- Remove points in a straight line
+    local filtered_path = { path[1] }
+    for i = 2, #path - 1 do
+        local prev = path[i - 1]
+        local curr = path[i]
+        local next = path[i + 1]
+
+        local dir1 = { x = curr:x() - prev:x(), y = curr:y() - prev:y() }
+        local dir2 = { x = next:x() - curr:x(), y = next:y() - curr:y() }
+
+        if dir1.x * dir2.y ~= dir1.y * dir2.x then
+            table.insert(filtered_path, curr)
+        end
+    end
+    table.insert(filtered_path, path[#path])
+
+    return filtered_path
 end
 
 local function a_star(start, goal)
-    
+
     local closed_set = {}
     local came_from = {}
     local g_score = { [get_grid_key(start)] = 0 }
@@ -471,7 +491,7 @@ local function a_star(start, goal)
 
     while not open_set:empty() do
         iterations = iterations + 1
-        if iterations > 5000 then
+        if iterations > 6666 then
             console.print("Max iterations reached, aborting!")
             break
         end
@@ -479,7 +499,7 @@ local function a_star(start, goal)
         local current = open_set:pop()
         if calculate_distance(current, goal) < grid_size then
             max_target_distance = target_distance_states[1]
-            target_distance_index = 1 
+            target_distance_index = 1
             return reconstruct_path(came_from, current)
         end
 
@@ -508,10 +528,12 @@ local function a_star(start, goal)
         console.print("No path found. Reducing max target distance to " .. max_target_distance)
     else
         console.print("No path found even after reducing max target distance.")
-    end 
+    end
+
     return nil
 end
 
+local last_a_star_call = 0.0
 local function move_to_target()
     if target_position then
         local player_pos = get_player_position()
@@ -523,8 +545,18 @@ local function move_to_target()
         end
 
         if not current_path or #current_path == 0 or path_index > #current_path then
-            current_path = a_star(player_pos, target_position)
-            path_index = 1
+
+            -- console.print("222")
+            local current_core_time = get_time_since_inject()
+            -- if current_core_time - last_a_star_call > 0.66 then
+
+                -- console.print("333")
+                path_index = 1
+                current_path = nil
+                current_path = a_star(player_pos, target_position)
+                last_a_star_call = current_core_time
+            -- end
+
             if not current_path then
                 console.print("No path found to target. Finding new target.")
                 target_position = find_target(false)
@@ -533,9 +565,17 @@ local function move_to_target()
         end
 
         local next_point = current_path[path_index]
-        pathfinder.request_move(next_point)
+        
+        if next_point and not next_point:is_zero() then
+           -- pathfinder.request_move(next_point)
+           -- pathfinder.force_move(next_point)
+            --pathfinder.force_move_raw(next_point)
+            pathfinder.request_move(next_point)
+        end
+       
+        if next_point and next_point.x and not next_point:is_zero() and calculate_distance(player_pos, next_point) < grid_size then
 
-        if calculate_distance(player_pos, next_point) < grid_size then
+            -- console.print("444")
             local direction = {
                 x = next_point:x() - player_pos:x(),
                 y = next_point:y() - player_pos:y()
@@ -545,6 +585,8 @@ local function move_to_target()
         end
 
         if calculate_distance(player_pos, target_position) < 2 then
+
+            -- console.print("555")
             mark_area_as_explored(player_pos, exploration_radius)
             target_position = nil
             current_path = {}
@@ -590,8 +632,39 @@ function explorer:move_to_target()
     move_to_target()
 end
 
-on_render(function()
-    if utils.player_on_quest(enums.quests.pit_ongoing) and settings.enabled then
+local last_call_time = 0.0
+local is_player_on_quest = false
+on_update(function()
+
+    if not settings.enabled then
+        return
+    end
+
+    local world = world.get_current_world()
+    if world then
+        local world_name = world:get_name()
+        if world_name:match("Sanctuary") or world_name:match("Limbo") then
+            return
+        end
+    end
+
+    -- repeat this code on explorer.lua cba , i want to move fast
+    local auto_play_objective = auto_play.get_objective()
+    local should_sell = auto_play_objective == objective.sell
+    if should_sell then
+
+        return -- stop code here
+    end
+
+    local current_core_time = get_time_since_inject()
+    if current_core_time - last_call_time > 0.45 then
+        
+        last_call_time = current_core_time
+        is_player_on_quest = utils.player_on_quest(enums.quests.pit_ongoing) and settings.enabled
+        if not is_player_on_quest then
+            return
+        end
+
         check_walkable_area()
         local is_stuck = check_if_stuck()
         if is_stuck then
@@ -601,24 +674,55 @@ on_render(function()
             last_move_time = os.time()
             current_path = {}
             path_index = 1
-            revive_at_checkpoint() 
-        end
 
-        explorer:move_to_target()
-
-        if target_position then
-            graphics.text_3d("TARGET", target_position, 20, color_red(255))
-        end
-
-        if current_path then
-            for i, point in ipairs(current_path) do
-                local color = (i == path_index) and color_green(255) or color_yellow(255)
-                graphics.text_3d("PATH", point, 15, color)
+            local local_player = get_local_player()
+            if local_player and local_player:is_dead() then
+                revive_at_checkpoint()
+            else
+                console.print("local_player " .. tostring(local_player))  -- Fixed line
+                console.print("local_player:is_dead() " .. tostring(local_player:is_dead()))
             end
         end
-
-        graphics.text_2d("Mode: " .. exploration_mode, vec2:new(10, 10), 20, color_white(255))
     end
+
+    if current_core_time - last_call_time > 0.15 then
+        explorer:move_to_target()
+    end
+
+end)
+
+on_render(function()
+
+    if not settings.enabled then
+        return
+    end
+
+    -- dont slide frames here so drawings feel smooth
+    if target_position then
+        if target_position.x then
+            graphics.text_3d("TARGET_1", target_position, 20, color_red(255))
+        else
+            if target_position and target_position:get_position() then
+                graphics.text_3d("TARGET_2", target_position:get_position(), 20, color_orange(255))
+            end
+        end
+    end
+
+    if current_path then
+        for i, point in ipairs(current_path) do
+            local color = (i == path_index) and color_green(255) or color_yellow(255)
+
+            -- if point.x then
+                graphics.text_3d("PATH_1", point, 15, color)
+            -- else
+            --     if point and point:get_position() then
+            --         graphics.text_3d("PATH_2", point, 15, color)
+            --     end
+            -- end
+        end
+    end
+
+    graphics.text_2d("Mode: " .. exploration_mode, vec2:new(10, 10), 20, color_white(255))
 end)
 
 return explorer

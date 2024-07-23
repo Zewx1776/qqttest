@@ -1,3 +1,5 @@
+-- if true then return end
+
 local gui          = require "gui"
 local task_manager = require "core.task_manager"
 local settings     = require "core.settings"
@@ -10,6 +12,7 @@ local function update_locals()
 end
 
 local function main_pulse()
+
     settings:update_settings()
     if not local_player or not settings.enabled then return end
     task_manager.execute_tasks()
@@ -29,5 +32,6 @@ on_update(function()
     update_locals()
     main_pulse()
 end)
+
 on_render_menu(gui.render)
 on_render(render_pulse)
